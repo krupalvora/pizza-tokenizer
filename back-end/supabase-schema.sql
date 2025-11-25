@@ -5,10 +5,18 @@
 CREATE TABLE IF NOT EXISTS tokens (
     id BIGSERIAL PRIMARY KEY,
     token_no INTEGER NOT NULL UNIQUE,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'ready')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'ready', 'served')),
+    pizza_type TEXT DEFAULT 'Regular Pizza',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL
 );
+
+-- If table already exists, add pizza_type column (run this separately if needed)
+-- ALTER TABLE tokens ADD COLUMN IF NOT EXISTS pizza_type TEXT DEFAULT 'Regular Pizza';
+
+-- Update status constraint if needed (run this separately if table exists)
+-- ALTER TABLE tokens DROP CONSTRAINT IF EXISTS tokens_status_check;
+-- ALTER TABLE tokens ADD CONSTRAINT tokens_status_check CHECK (status IN ('pending', 'ready', 'served'));
 
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);

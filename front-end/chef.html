@@ -12,7 +12,15 @@
 <body class="bg-gray-100 p-4 md:p-6 min-h-screen pb-24">
   <!-- Header with last token display -->
   <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
-    <h1 class="text-2xl sm:text-3xl font-bold">Admin Panel</h1>
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl sm:text-3xl font-bold">Admin Panel</h1>
+      <!-- Reset Counter Button -->
+      <button id="resetBtn" 
+        class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1.5 rounded-lg shadow text-sm font-semibold flex items-center gap-1"
+        title="Reset counter (delete all tokens)">
+        <span class="text-lg">↻</span> Reset
+      </button>
+    </div>
     <div id="lastTokenDisplay" class="text-gray-600 text-xl sm:text-3xl font-bold">
       Last Token: <span id="lastTokenNumber" class="text-blue-600">-</span>
     </div>
@@ -74,26 +82,34 @@
 
     // Render card
     function renderCard(token) {
-      const statusColor = token.status === "ready" ? "bg-green-50 border-green-300" : "bg-white";
-      const statusText = token.status === "ready" ? "text-green-700 text-xs md:text-sm" : "text-gray-500 text-xs md:text-sm";
+      const statusColor = token.status === "ready" ? "bg-green-50 border-green-300" : token.status === "served" ? "bg-gray-100 border-gray-300 opacity-60" : "bg-white";
+      const statusText = token.status === "ready" ? "text-green-700 text-xs md:text-sm" : token.status === "served" ? "text-gray-500 text-xs md:text-sm" : "text-gray-500 text-xs md:text-sm";
+      const pizzaType = token.pizza_type || "Regular Pizza";
       
       return `
         <div class="${statusColor} p-3 md:p-4 rounded-lg shadow border-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
           <div class="flex-1">
-            <span class="text-xl md:text-2xl font-bold">#${token.token_no}</span>
-            <div class="${statusText} capitalize">${token.status}</div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xl md:text-2xl font-bold">#${token.token_no}</span>
+              <span class="text-xs md:text-sm text-gray-600 font-medium bg-gray-200 px-2 py-1 rounded">
+                ${pizzaType}
+              </span>
+            </div>
+            <div class="${statusText} capitalize mt-1">${token.status}</div>
           </div>
 
           <div class="flex gap-2 sm:gap-3">
             <!-- Mark Ready -->
             <button onclick="markReady(${token.id})"
-              class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none">
+              class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none ${token.status === 'served' ? 'opacity-50 cursor-not-allowed' : ''}"
+              ${token.status === 'served' ? 'disabled' : ''}>
               ✓ Ready
             </button>
 
-            <!-- Delete -->
-            <button onclick="deleteToken(${token.id})"
-              class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none">
+            <!-- Mark Served -->
+            <button onclick="markServed(${token.id})"
+              class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none ${token.status === 'served' ? 'opacity-50 cursor-not-allowed' : ''}"
+              ${token.status === 'served' ? 'disabled' : ''}>
               ✕ Served
             </button>
           </div>
@@ -101,11 +117,12 @@
       `;
     }
 
-    // Fetch and display all tokens (queue order - oldest first)
+    // Fetch and display all tokens (queue order - oldest first, exclude served)
     async function loadTokens() {
       const { data, error } = await supabase
         .from("tokens")
         .select("*")
+        .neq("status", "served") // Exclude served tokens from display
         .order("token_no", { ascending: true }); // Queue order: oldest first
 
       if (error) {
@@ -189,6 +206,7 @@
         const { error } = await supabase.from("tokens").insert({
           token_no: nextTokenNo,
           status: "pending",
+          pizza_type: "Regular Pizza",
         });
 
         if (error) throw error;
@@ -200,9 +218,10 @@
       }
     }
 
-    // Create tokens with quantity
+    // Create token with selected pizza type
     document.getElementById("confirmCreate").onclick = async () => {
-      const quantity = parseInt(document.getElementById("quantitySelect").value);
+      const pizzaTypeSelect = document.getElementById("quantitySelect");
+      const pizzaType = pizzaTypeSelect.options[pizzaTypeSelect.selectedIndex].text;
       const confirmBtn = document.getElementById("confirmCreate");
       const originalText = confirmBtn.textContent;
       
@@ -210,27 +229,23 @@
       confirmBtn.textContent = "Creating...";
       
       try {
-        const startTokenNo = await getNextTokenNumber();
+        const nextTokenNo = await getNextTokenNumber();
         
-        // Create multiple tokens if quantity > 1
-        const tokensToInsert = [];
-        for (let i = 0; i < quantity; i++) {
-          tokensToInsert.push({
-            token_no: startTokenNo + i,
-            status: "pending",
-          });
-        }
-        
-        const { error } = await supabase.from("tokens").insert(tokensToInsert);
+        // Always create only one token with selected pizza type
+        const { error } = await supabase.from("tokens").insert({
+          token_no: nextTokenNo,
+          status: "pending",
+          pizza_type: pizzaType,
+        });
 
         if (error) throw error;
         
-        // Reload tokens to show the new ones
+        // Reload tokens to show the new one
         await loadTokens();
         hideCreateModal();
       } catch (error) {
         console.error("Error creating token:", error);
-        alert("Failed to create token(s). Please check console.");
+        alert("Failed to create token. Please check console.");
       } finally {
         confirmBtn.disabled = false;
         confirmBtn.textContent = originalText;
@@ -260,18 +275,48 @@
       }
     };
 
-    // Delete Token - make it globally accessible
-    window.deleteToken = async function(id) {
+    // Mark Token as Served - make it globally accessible
+    window.markServed = async function(id) {
       const { error } = await supabase
         .from("tokens")
-        .delete()
+        .update({ status: "served" })
         .eq("id", id);
 
       if (error) {
-        console.error("Error deleting token:", error);
-        alert("Failed to delete token.");
+        console.error("Error marking as served:", error);
+        alert("Failed to mark token as served.");
       } else {
         await loadTokens(); // Refresh the list
+      }
+    };
+
+    // Reset Counter - Delete all tokens
+    document.getElementById("resetBtn").onclick = async () => {
+      if (!confirm("Are you sure you want to reset the counter? This will delete ALL tokens permanently.")) {
+        return;
+      }
+
+      const resetBtn = document.getElementById("resetBtn");
+      const originalText = resetBtn.innerHTML;
+      resetBtn.disabled = true;
+      resetBtn.innerHTML = '<span class="text-lg">⏳</span> Resetting...';
+
+      try {
+        const { error } = await supabase
+          .from("tokens")
+          .delete()
+          .neq("id", 0); // Delete all records
+
+        if (error) throw error;
+
+        await loadTokens();
+        alert("Counter reset successfully! Token numbers will start from 1.");
+      } catch (error) {
+        console.error("Error resetting counter:", error);
+        alert("Failed to reset counter. Please check console.");
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.innerHTML = originalText;
       }
     };
 

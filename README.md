@@ -25,6 +25,10 @@ A simple, real-time token/queue management system for pizza outlets built with *
 3. Copy and paste the contents of `back-end/supabase-schema.sql`
 4. Click **Run** to execute the SQL
 
+**If you already have the tokens table**, run the migration script:
+1. Copy and paste the contents of `back-end/migration-add-served-status.sql`
+2. Click **Run** to add the `served` status and `pizza_type` column
+
 ### 3. Get Your Supabase Credentials
 
 1. Go to **Project Settings** → **API**
