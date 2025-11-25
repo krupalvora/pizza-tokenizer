@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Token Display</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="./supabase.js"></script>
+</head>
+
+<body class="bg-gradient-to-br from-blue-50 to-blue-100 min-h-screen p-8">
+
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-5xl font-bold mb-8 text-center text-blue-900 drop-shadow-lg">
+      Hey folks, your pizza 🍕 is ready!
+    </h1>
+
+    <div id="grid" class="grid gap-6"></div>
+  </div>
+
+  <script>
+    const grid = document.getElementById("grid");
+
+    // Calculate optimal grid columns based on token count (consumer-friendly grid)
+    function getGridCols(count) {
+      if (count === 0) return "grid-cols-1";
+      if (count === 1) return "grid-cols-1";
+      if (count <= 4) return "grid-cols-2";
+      if (count <= 9) return "grid-cols-3";
+      if (count <= 16) return "grid-cols-4";
+      if (count <= 25) return "grid-cols-5";
+      if (count <= 36) return "grid-cols-6";
+      // For more tokens, use responsive grid
+      return "grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
+    }
+
+    // Render tile
+    function tile(no) {
+      return `
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white text-6xl font-bold rounded-2xl flex flex-col justify-center items-center h-40 shadow-2xl transform transition-all hover:scale-110 hover:shadow-blue-700/50 hover:rotate-1 border-4 border-blue-400">
+          <div class="text-2xl font-normal mb-1 opacity-90">Order</div>
+          <div class="text-7xl">#${no}</div>
+        </div>
+      `;
+    }
+
+    // Load ready tokens
+    async function loadGrid() {
+      const { data, error } = await supabase
+        .from("tokens")
+        .select("*")
+        .eq("status", "ready")
+        .order("token_no", { ascending: true });
+
+      if (error) {
+        console.error("Error loading tokens:", error);
+        return;
+      }
+
+      const tokenCount = data.length;
+      const colsClass = getGridCols(tokenCount);
+      grid.className = `grid ${colsClass} gap-6 max-w-7xl mx-auto`;
+
+      if (tokenCount === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full text-center text-blue-300 text-3xl py-32 bg-blue-50 rounded-2xl border-2 border-blue-200 border-dashed">
+            <div class="text-6xl mb-4">🍕</div>
+            <div class="font-semibold">No orders ready yet</div>
+            <div class="text-xl text-blue-400 mt-2">Check back soon!</div>
+          </div>
+        `;
+      } else {
+        grid.innerHTML = data.map(t => tile(t.token_no)).join("");
+      }
+    }
+
+    // Realtime updates
+    supabase
+      .channel("display")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tokens" }, () => {
+        loadGrid();
+      })
+      .subscribe();
+
+    // Initial load
+    loadGrid();
+  </script>
+
+</body>
+</html>

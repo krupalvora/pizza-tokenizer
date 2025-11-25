@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - Token Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="./supabase.js"></script>
+</head>
+
+<body class="bg-gray-100 p-4 md:p-6 min-h-screen pb-24">
+  <!-- Header with last token display -->
+  <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
+    <h1 class="text-2xl sm:text-3xl font-bold">Admin Panel</h1>
+    <div id="lastTokenDisplay" class="text-gray-600 text-xl sm:text-3xl font-bold">
+      Last Token: <span id="lastTokenNumber" class="text-blue-600">-</span>
+    </div>
+  </div>
+
+  <!-- Create Token Modal/Dialog -->
+  <div id="createModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-4 md:p-6 max-w-md w-full mx-4 relative max-h-[90vh] overflow-y-auto">
+      <!-- Close button -->
+      <button id="closeModal" class="absolute top-3 right-3 md:top-4 md:right-4 text-gray-400 hover:text-gray-600 active:text-gray-800 text-3xl md:text-2xl z-10 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200">&times;</button>
+      
+      <h2 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">Create New Token</h2>
+      
+      <!-- Current token number - Large and centered -->
+      <div class="mb-6 md:mb-8 text-center">
+        <p class="text-gray-600 text-base md:text-lg mb-2">Current Token Number</p>
+        <div id="nextTokenPreview" class="text-5xl md:text-7xl font-bold text-blue-600 font-mono">-</div>
+      </div>
+      
+      <!-- Quantity dropdown -->
+      <div class="mb-4 md:mb-6">
+        <label class="block text-gray-700 font-semibold mb-2 text-sm md:text-base">Pizza Type</label>
+        <select id="quantitySelect" class="w-full border border-gray-300 rounded-lg px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="1" default>Regular Pizza</option>
+          <option value="2">Only Cheese Pizza</option>
+          <option value="3">Custom Pizza</option>
+        </select>
+      </div>
+      
+      <!-- Action buttons -->
+      <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <button id="cancelCreate" class="flex-1 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 px-4 py-3 rounded-lg font-semibold text-base">
+          Cancel
+        </button>
+        <button id="confirmCreate" class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg font-semibold text-base">
+          Create
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token Card List -->
+  <div id="tokenList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mt-4 md:mt-6"></div>
+
+  <!-- Floating Action Button - Create Token -->
+  <button id="createBtn"
+    class="fixed bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center text-3xl font-bold z-40 transition-all transform hover:scale-110 active:scale-95">
+    +
+  </button>
+
+  <!-- Keyboard shortcut hint (hidden on mobile) -->
+  <div class="hidden md:block fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg shadow-lg text-sm">
+    Click <kbd class="bg-white px-2 py-1 rounded border border-gray-300 font-mono">Shift + N</kbd> to create token directly with default values
+  </div>
+
+  <script>
+    const tokenList = document.getElementById("tokenList");
+    const createBtn = document.getElementById("createBtn");
+
+    // Render card
+    function renderCard(token) {
+      const statusColor = token.status === "ready" ? "bg-green-50 border-green-300" : "bg-white";
+      const statusText = token.status === "ready" ? "text-green-700 text-xs md:text-sm" : "text-gray-500 text-xs md:text-sm";
+      
+      return `
+        <div class="${statusColor} p-3 md:p-4 rounded-lg shadow border-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+          <div class="flex-1">
+            <span class="text-xl md:text-2xl font-bold">#${token.token_no}</span>
+            <div class="${statusText} capitalize">${token.status}</div>
+          </div>
+
+          <div class="flex gap-2 sm:gap-3">
+            <!-- Mark Ready -->
+            <button onclick="markReady(${token.id})"
+              class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none">
+              ✓ Ready
+            </button>
+
+            <!-- Delete -->
+            <button onclick="deleteToken(${token.id})"
+              class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none">
+              ✕ Served
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Fetch and display all tokens (queue order - oldest first)
+    async function loadTokens() {
+      const { data, error } = await supabase
+        .from("tokens")
+        .select("*")
+        .order("token_no", { ascending: true }); // Queue order: oldest first
+
+      if (error) {
+        console.error("Error loading tokens:", error);
+        return;
+      }
+
+      tokenList.innerHTML = data
+        .map(renderCard)
+        .join("") || "<p class='text-gray-500 text-center py-8 md:py-12 text-base md:text-lg'>No tokens yet. Tap the + button to create one!</p>";
+      
+      // Update last token number in modal
+      updateLastTokenNumber();
+    }
+
+    // Get last token number
+    async function getLastTokenNumber() {
+      const { data, error } = await supabase
+        .from("tokens")
+        .select("token_no")
+        .order("token_no", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Error getting last token:", error);
+        return null;
+      }
+
+      return data.length > 0 ? data[0].token_no : null;
+    }
+
+    // Update last token number display
+    async function updateLastTokenNumber() {
+      const lastToken = await getLastTokenNumber();
+      const lastTokenSpan = document.getElementById("lastTokenNumber");
+      if (lastToken !== null) {
+        lastTokenSpan.textContent = lastToken;
+      } else {
+        lastTokenSpan.textContent = "-";
+      }
+    }
+
+    // Show create modal
+    async function showCreateModal() {
+      const modal = document.getElementById("createModal");
+      const nextToken = await getNextTokenNumber();
+      
+      document.getElementById("nextTokenPreview").textContent = nextToken;
+      await updateLastTokenNumber();
+      
+      modal.classList.remove("hidden");
+    }
+
+    // Hide create modal
+    function hideCreateModal() {
+      const modal = document.getElementById("createModal");
+      modal.classList.add("hidden");
+      document.getElementById("quantitySelect").value = "1"; // Reset to default
+    }
+
+    // Show modal on create button click
+    createBtn.onclick = () => {
+      showCreateModal();
+    };
+
+    // Close modal handlers
+    document.getElementById("closeModal").onclick = hideCreateModal;
+    document.getElementById("cancelCreate").onclick = hideCreateModal;
+
+    // Close modal on outside click
+    document.getElementById("createModal").onclick = (e) => {
+      if (e.target.id === "createModal") {
+        hideCreateModal();
+      }
+    };
+
+    // Create token with default values (for keyboard shortcut)
+    async function createTokenWithDefault() {
+      try {
+        const nextTokenNo = await getNextTokenNumber();
+        const { error } = await supabase.from("tokens").insert({
+          token_no: nextTokenNo,
+          status: "pending",
+        });
+
+        if (error) throw error;
+        
+        await loadTokens();
+      } catch (error) {
+        console.error("Error creating token:", error);
+        alert("Failed to create token. Please check console.");
+      }
+    }
+
+    // Create tokens with quantity
+    document.getElementById("confirmCreate").onclick = async () => {
+      const quantity = parseInt(document.getElementById("quantitySelect").value);
+      const confirmBtn = document.getElementById("confirmCreate");
+      const originalText = confirmBtn.textContent;
+      
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Creating...";
+      
+      try {
+        const startTokenNo = await getNextTokenNumber();
+        
+        // Create multiple tokens if quantity > 1
+        const tokensToInsert = [];
+        for (let i = 0; i < quantity; i++) {
+          tokensToInsert.push({
+            token_no: startTokenNo + i,
+            status: "pending",
+          });
+        }
+        
+        const { error } = await supabase.from("tokens").insert(tokensToInsert);
+
+        if (error) throw error;
+        
+        // Reload tokens to show the new ones
+        await loadTokens();
+        hideCreateModal();
+      } catch (error) {
+        console.error("Error creating token:", error);
+        alert("Failed to create token(s). Please check console.");
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+      }
+    };
+
+    // Keyboard shortcut: Shift + N
+    document.addEventListener("keydown", (e) => {
+      if (e.shiftKey && e.key === "N") {
+        e.preventDefault();
+        createTokenWithDefault();
+      }
+    });
+
+    // Mark Ready - make it globally accessible
+    window.markReady = async function(id) {
+      const { error } = await supabase
+        .from("tokens")
+        .update({ status: "ready" })
+        .eq("id", id);
+
+      if (error) {
+        console.error("Error marking ready:", error);
+        alert("Failed to mark as ready.");
+      } else {
+        await loadTokens(); // Refresh the list
+      }
+    };
+
+    // Delete Token - make it globally accessible
+    window.deleteToken = async function(id) {
+      const { error } = await supabase
+        .from("tokens")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        console.error("Error deleting token:", error);
+        alert("Failed to delete token.");
+      } else {
+        await loadTokens(); // Refresh the list
+      }
+    };
+
+    // Listen for realtime DB changes
+    supabase
+      .channel("tokens")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tokens" }, () => {
+        loadTokens();
+      })
+      .subscribe();
+
+    // Initial load
+    loadTokens();
+  </script>
+
+</body>
+</html>
