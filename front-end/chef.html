@@ -26,6 +26,18 @@
     </div>
   </div>
 
+  <!-- Summary stats -->
+  <div class="bg-white rounded-2xl shadow border border-gray-200 grid grid-cols-2 divide-x divide-gray-200 py-4 mb-4 text-center">
+    <div class="px-4">
+      <p class="text-gray-500 uppercase text-xs tracking-wide">Ready Orders</p>
+      <p id="readyCount" class="text-3xl font-bold text-green-600">0</p>
+    </div>
+    <div class="px-4">
+      <p class="text-gray-500 uppercase text-xs tracking-wide">Pending Orders</p>
+      <p id="pendingCount" class="text-3xl font-bold text-blue-600">0</p>
+    </div>
+  </div>
+
   <!-- Create Token Modal/Dialog -->
   <div id="createModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-lg shadow-xl p-4 md:p-6 max-w-md w-full mx-4 relative max-h-[90vh] overflow-y-auto">
@@ -79,6 +91,8 @@
   <script>
     const tokenList = document.getElementById("tokenList");
     const createBtn = document.getElementById("createBtn");
+    const readyCountEl = document.getElementById("readyCount");
+    const pendingCountEl = document.getElementById("pendingCount");
 
     // Render card
     function renderCard(token) {
@@ -129,6 +143,12 @@
         console.error("Error loading tokens:", error);
         return;
       }
+
+      const readyCount = data.filter(t => t.status === "ready").length;
+      const pendingCount = data.filter(t => t.status === "pending").length;
+
+      readyCountEl.textContent = readyCount;
+      pendingCountEl.textContent = pendingCount;
 
       tokenList.innerHTML = data
         .map(renderCard)
