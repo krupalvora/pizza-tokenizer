@@ -101,7 +101,9 @@
       const pizzaType = token.pizza_type || "Regular Pizza";
       
       return `
-        <div class="${statusColor} p-3 md:p-4 rounded-lg shadow border-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+        <div class="${statusColor} p-3 md:p-4 rounded-lg shadow border-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0" 
+             ondblclick="announceToken(${token.token_no})"
+             style="cursor: pointer;">
           <div class="flex-1">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-xl md:text-2xl font-bold">#${token.token_no}</span>
@@ -113,15 +115,15 @@
           </div>
 
           <div class="flex gap-2 sm:gap-3">
-            <!-- Mark Ready -->
-            <button onclick="markReady(${token.id})"
-              class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none ${token.status === 'served' ? 'opacity-50 cursor-not-allowed' : ''}"
+            <!-- Mark Ready / Undo Ready -->
+            <button onclick="markReady(${token.id}); event.stopPropagation();"
+              class="${token.status === 'ready' ? 'bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800' : 'bg-green-600 hover:bg-green-700 active:bg-green-800'} text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none ${token.status === 'served' ? 'opacity-50 cursor-not-allowed' : ''}"
               ${token.status === 'served' ? 'disabled' : ''}>
-              ✓ Ready
+              ${token.status === 'ready' ? '↶ Undo' : '✓ Ready'}
             </button>
 
             <!-- Mark Served -->
-            <button onclick="markServed(${token.id})"
+            <button onclick="markServed(${token.id}); event.stopPropagation();"
               class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-3 md:px-4 py-2 rounded text-xs md:text-sm font-semibold flex-1 sm:flex-none ${token.status === 'served' ? 'opacity-50 cursor-not-allowed' : ''}"
               ${token.status === 'served' ? 'disabled' : ''}>
               ✕ Served
@@ -280,16 +282,32 @@
       }
     });
 
-    // Mark Ready - make it globally accessible
+    // Mark Ready - make it globally accessible (toggle: ready <-> pending)
     window.markReady = async function(id) {
+      // First, get the current status of the token
+      const { data: tokenData, error: fetchError } = await supabase
+        .from("tokens")
+        .select("status")
+        .eq("id", id)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching token:", fetchError);
+        alert("Failed to fetch token status.");
+        return;
+      }
+
+      // Toggle status: if ready, go back to pending; if pending, mark as ready
+      const newStatus = tokenData.status === "ready" ? "pending" : "ready";
+
       const { error } = await supabase
         .from("tokens")
-        .update({ status: "ready" })
+        .update({ status: newStatus })
         .eq("id", id);
 
       if (error) {
-        console.error("Error marking ready:", error);
-        alert("Failed to mark as ready.");
+        console.error("Error toggling status:", error);
+        alert("Failed to toggle status.");
       } else {
         await loadTokens(); // Refresh the list
       }
@@ -307,6 +325,26 @@
         alert("Failed to mark token as served.");
       } else {
         await loadTokens(); // Refresh the list
+      }
+    };
+
+    // Create and subscribe to announcement channel once (no database storage required)
+    const announcementChannel = supabase.channel('token-announcements');
+    announcementChannel.subscribe();
+
+    // Announce Token - make it globally accessible (double-click handler)
+    // Uses Supabase Realtime broadcast (no database storage required)
+    window.announceToken = async function(tokenNo) {
+      try {
+        // Broadcast the token number to all connected clients
+        await announcementChannel.send({
+          type: 'broadcast',
+          event: 'token-announcement',
+          payload: { token_no: tokenNo }
+        });
+        console.log(`Token #${tokenNo} announced on display screen`);
+      } catch (error) {
+        console.error("Error announcing token:", error);
       }
     };
 
